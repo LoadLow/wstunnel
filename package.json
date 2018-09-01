@@ -22,9 +22,10 @@
     "node": "*"
   },
   "dependencies": {
-    "global-tunnel-ng": "^2.1.0",
+    "chroot": "^1.0.10",
+    "global-tunnel-ng": "^2.5.4",
     "lawg": "1.0.3",
-    "machine-uuid": "^1.0.10",
+    "machine-uuid": "^1.2.0",
     "node-uuid": "1.4.1",
     "optimist": "0.3.5",
     "phuture": "^1.0.7",
