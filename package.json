@@ -34,7 +34,7 @@
     "websocket": "^1.0.25"
   },
   "optionalDependencies": {
-    "chroot": "^1.0.10",
+    "chroot": "^1.0.10"
   },
   "devDependencies": {
     "source-map-support": "0.1.2"
