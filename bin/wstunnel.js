@@ -136,7 +136,7 @@ module.exports = (Server, Client) => {
                 if (toks[0] === 'stdio') {
                     client.startStdio(wsHostUrl, remoteAddr, headers, (err) => {
                         if (err) {
-                            console.error(err)
+                            console.error(err.message)
                             process.exit(1)
                         } else if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
                             chroot(argv.chroot.toString(), argv.chuser.toString());
