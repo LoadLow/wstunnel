@@ -1,8 +1,13 @@
 const globalTunnel = require('global-tunnel-ng');
 const urlParse = require('url').parse;
-const chroot = require('chroot');
-const posix = require('posix');
 const ippkg = require('ip');
+
+var chroot
+try{
+    chroot =  require('chroot');
+}catch(e){
+    chroot = null;
+}
 
 const Help = `
 Run websocket tunnel server or client.
@@ -66,7 +71,7 @@ module.exports = (Server, Client) => {
         server.start(argv.s, (err) => {
             if (err) return;
             console.log(` Server is listening on ${argv.s}`);
-            if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+            if (chroot !== null && process.getuid() === 0 && argv.chroot && argv.chuser) {
                 chroot(argv.chroot.toString(), argv.chuser.toString());
                 console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
             }
@@ -138,7 +143,7 @@ module.exports = (Server, Client) => {
                         if (err) {
                             console.error(err.message)
                             process.exit(1)
-                        } else if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+                        } else if (chroot !== null && process.getuid() === 0 && argv.chroot && argv.chuser) {
                             chroot(argv.chroot.toString(), argv.chuser.toString());
                         }
                     })
@@ -162,7 +167,7 @@ module.exports = (Server, Client) => {
                         console.log(`Client tunneling tcp://${localAddr} -> ${url.protocol}//${url.host}${url.port ? ':' + url.port : ''} -> tcp://${remoteAddr}`);
                     }
 
-                    if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+                    if (chroot !== null && process.getuid() === 0 && argv.chroot && argv.chuser) {
                         chroot(argv.chroot.toString(), argv.chuser.toString());
                         console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
                     }
