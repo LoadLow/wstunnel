@@ -1,5 +1,7 @@
 const globalTunnel = require('global-tunnel-ng');
-var urlParse = require('url').parse;
+const urlParse = require('url').parse;
+const chroot = require('chroot');
+const posix = require('posix');
 
 const Help = `
 Run websocket tunnel server or client.
