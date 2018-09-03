@@ -23,7 +23,9 @@
   },
   "dependencies": {
     "chroot": "^1.0.10",
+    "crypto": "^1.0.1",
     "global-tunnel-ng": "^2.5.4",
+    "ip": "^1.1.5",
     "lawg": "1.0.3",
     "machine-uuid": "^1.2.0",
     "node-uuid": "1.4.1",

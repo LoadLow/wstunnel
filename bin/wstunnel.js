@@ -2,6 +2,7 @@ const globalTunnel = require('global-tunnel-ng');
 const urlParse = require('url').parse;
 const chroot = require('chroot');
 const posix = require('posix');
+const ippkg = require('ip');
 
 const Help = `
 Run websocket tunnel server or client.
@@ -27,146 +28,149 @@ Above command will ssh to "user@sshdestination" via the wstunnel server at "http
 `;
 
 module.exports = (Server, Client) => {
-  const optimist = require('optimist')
-  let argv = optimist
-    .usage(Help)
-    .string("s")
-    .string("t")
-    .string("p")
-    .string("H")
-    .string("chroot")
-    .string("chuser")
-    .alias('p', "proxy")
-    .alias('t', "tunnel")
-    .boolean('c')
-    .boolean('http')
-    .alias('c', 'anycert')
-    .default('c', false)
-    .describe('s', 'run as server, listen on [localip:]localport, default localip is 127.0.0.1')
-    .describe('tunnel', 'run as tunnel client, specify [localip:]localport:host:port')
-    .describe("proxy", "connect via a http proxy server in client mode")
-    .describe("chroot", "chroot path")
-    .describe("chuser", "drop privileges to this user")
-    .describe("c", "accept any certificates")
-    .describe("H", "additional headers")
-    .argv;
+    const optimist = require('optimist')
+    let argv = optimist
+        .usage(Help)
+        .string("s")
+        .string("t")
+        .string("p")
+        .string("H")
+        .string("k")
+        .string("chroot")
+        .string("chuser")
+        .alias('k', "authkey")
+        .alias('p', "proxy")
+        .alias('t', "tunnel")
+        .boolean('c')
+        .boolean('http')
+        .alias('c', 'anycert')
+        .default('c', false)
+        .describe('s', 'run as server, listen on [localip:]localport, default localip is 127.0.0.1')
+        .describe('tunnel', 'run as tunnel client, specify [localip:]localport:host:port')
+        .describe("proxy", "connect via a http proxy server in client mode")
+        .describe("chroot", "chroot path")
+        .describe("chuser", "drop privileges to this user")
+        .describe("authkey", "Authentication key")
+        .describe("c", "accept any certificates")
+        .describe("H", "additional headers")
+        .argv;
 
-  if (argv.s) {
-    let server;
-    if (argv.t) {
-      let [host, port] = argv.t.split(":")
-      server = new Server(host, port)
-    } else {
-      server = new Server()
-    }
-    server.start(argv.s, (err) => {
-      if(err) return;
-      console.log(` Server is listening on ${argv.s}`);
-      if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
-          chroot(argv.chroot.toString(), argv.chuser.toString());
-          console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
-      }
-    })
-  } else if (argv.t) {
-  // client mode
-    function tryParse(url) {
-      if (!url) {
-        return null;
-      }
-      var parsed = urlParse(url);
-      return {
-        protocol: parsed.protocol,
-        host: parsed.hostname,
-        port: parseInt(parsed.port, 10),
-        proxyAuth: parsed.auth
-      };
-    }
-
-    const uuid = require("machine-uuid");
-    uuid((machineId) => {
-      let conf = {};
-      if ( argv.proxy ) {
-        conf = tryParse( argv.proxy );
-        if ( argv.c ) {
-          conf.proxyHttpsOptions =  {rejectUnauthorized: false};
-          process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-        }
-        globalTunnel.initialize(conf);
-      } else {
-        require("../lib/httpSetup").config(argv.proxy, argv.c)
-      }
-
-      let headers = {};
-      if(argv.H) {
-          if(Array.isArray(argv.H)) {
-              for(let i = 0; i < argv.H.length; ++i) {
-                  let parts = argv.H[i].split(':');
-                  if(parts.length < 2) continue;
-                  headers[parts[0].trim()] = parts[1].trim();
-              }
-          } else {
-              let parts = argv.H.split(':');
-              if(parts.length >= 2)
-                headers[parts[0].trim()] = parts[1].trim();
-          }
-      }
-      headers['x-wstclient'] = machineId;
-
-      let client = new Client()
-      if (argv.http) {
-        client.setHttpOnly(true)
-      }
-
-      let wsHostUrl = argv._[0]
-      client.verbose()
-
-      let DefaultLocalIp = "127.0.0.1"
-      let localAddr
-      let remoteAddr
-      let toks = argv.t.split(":")
-      if (toks.length === 4) {
-        localAddr = `${toks[0]}:${toks[1]}`
-        remoteAddr = `${toks[2]}:${toks[3]}`
-      } else if (toks.length === 3) {
-        remoteAddr = `${toks[1]}:${toks[2]}`
-        if (toks[0] === 'stdio') {
-          client.startStdio(wsHostUrl, remoteAddr, headers, (err) => {
-            if (err) {
-              console.error(err)
-              process.exit(1)
-            } else if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
-              chroot(argv.chroot.toString(), argv.chuser.toString());
-            }
-          })
-          return;
+    if (argv.s) {
+        let server;
+        if (argv.t) {
+            let [host, port] = argv.t.split(":")
+            server = new Server(argv.authkey, host, port)
         } else {
-          localAddr = `${DefaultLocalIp}:${toks[0]}`
+            server = new Server(argv.authkey)
         }
-      } else if (toks.length === 1) {
-        localAddr = `${DefaultLocalIp}:${toks[0]}`
-      }
-      client.start(localAddr, wsHostUrl, remoteAddr, headers, (err) => {
-          if (err) {
-              console.error("Can't establish WSTunnel, abort")
-              process.exit(1)
-          } else {
-              let url = urlParse(wsHostUrl)
-              if(argv.proxy) {
-                  let prxy = urlParse(argv.proxy);
-                  console.log(`Client tunneling tcp://${localAddr} -> ${prxy.protocol}//${prxy.host}${url.port ? ':'+url.port : ''} -> ${url.protocol}//${url.host}${url.port ? ':'+url.port : ''} -> tcp://${remoteAddr}`);
-              } else {
-                  console.log(`Client tunneling tcp://${localAddr} -> ${url.protocol}//${url.host}${url.port ? ':'+url.port : ''} -> tcp://${remoteAddr}`);
-              }
+        server.start(argv.s, (err) => {
+            if (err) return;
+            console.log(` Server is listening on ${argv.s}`);
+            if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+                chroot(argv.chroot.toString(), argv.chuser.toString());
+                console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
+            }
+        })
+    } else if (argv.t) {
+        // client mode
+        function tryParse(url) {
+            if (!url) {
+                return null;
+            }
+            var parsed = urlParse(url);
+            return {
+                protocol: parsed.protocol,
+                host: parsed.hostname,
+                port: parseInt(parsed.port, 10),
+                proxyAuth: parsed.auth
+            };
+        }
 
-              if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
-                  chroot(argv.chroot.toString(), argv.chuser.toString());
-                  console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
-              }
-          }
-      });
-    })
-  } else {
-    return console.log(optimist.help());
-  }
+        const uuid = require("machine-uuid");
+        uuid((machineId) => {
+            let conf = {};
+            if (argv.proxy) {
+                conf = tryParse(argv.proxy);
+                if (argv.c) {
+                    conf.proxyHttpsOptions = {rejectUnauthorized: false};
+                    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+                }
+                globalTunnel.initialize(conf);
+            } else {
+                require("../lib/httpSetup").config(argv.proxy, argv.c)
+            }
+
+            let headers = {};
+            if (argv.H) {
+                if (Array.isArray(argv.H)) {
+                    for (let i = 0; i < argv.H.length; ++i) {
+                        let parts = argv.H[i].split(':');
+                        if (parts.length < 2) continue;
+                        headers[parts[0].trim()] = parts[1].trim();
+                    }
+                } else {
+                    let parts = argv.H.split(':');
+                    if (parts.length >= 2)
+                        headers[parts[0].trim()] = parts[1].trim();
+                }
+            }
+            headers['x-wstclient'] = machineId;
+
+            let client = new Client(argv.authkey)
+            if (argv.http) {
+                client.setHttpOnly(true)
+            }
+
+            let wsHostUrl = argv._[0]
+            client.verbose()
+
+            let DefaultLocalIp = "127.0.0.1"
+            let localAddr
+            let remoteAddr
+            let toks = argv.t.split(":")
+            if (toks.length === 4) {
+                localAddr = `${toks[0]}:${toks[1]}`
+                remoteAddr = `${toks[2]}:${toks[3]}`
+            } else if (toks.length === 3) {
+                remoteAddr = `${toks[1]}:${toks[2]}`
+                if (toks[0] === 'stdio') {
+                    client.startStdio(wsHostUrl, remoteAddr, headers, (err) => {
+                        if (err) {
+                            console.error(err)
+                            process.exit(1)
+                        } else if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+                            chroot(argv.chroot.toString(), argv.chuser.toString());
+                        }
+                    })
+                    return;
+                } else {
+                    localAddr = `${DefaultLocalIp}:${toks[0]}`
+                }
+            } else if (toks.length === 1) {
+                localAddr = `${DefaultLocalIp}:${toks[0]}`
+            }
+            client.start(localAddr, wsHostUrl, remoteAddr, headers, (err) => {
+                if (err) {
+                    console.error("Can't establish WSTunnel, abort")
+                    process.exit(1)
+                } else {
+                    let url = urlParse(wsHostUrl)
+                    if (argv.proxy) {
+                        let prxy = urlParse(argv.proxy);
+                        console.log(`Client tunneling tcp://${localAddr} -> ${prxy.protocol}//${prxy.host}${url.port ? ':' + url.port : ''} -> ${url.protocol}//${url.host}${url.port ? ':' + url.port : ''} -> tcp://${remoteAddr}`);
+                    } else {
+                        console.log(`Client tunneling tcp://${localAddr} -> ${url.protocol}//${url.host}${url.port ? ':' + url.port : ''} -> tcp://${remoteAddr}`);
+                    }
+
+                    if (process.getuid() === 0 && posix.geteuid() === 0 && argv.chroot && argv.chuser) {
+                        chroot(argv.chroot.toString(), argv.chuser.toString());
+                        console.log(`Changed root to "${argv.chroot}" and user to "${argv.chuser}"`);
+                    }
+                }
+            });
+        })
+    } else {
+        return console.log(optimist.help());
+    }
 };
 
