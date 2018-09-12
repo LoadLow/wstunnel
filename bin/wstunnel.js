@@ -1,6 +1,6 @@
 const globalTunnel = require('global-tunnel-ng');
 const urlParse = require('url').parse;
-const ippkg = require('ip');
+const crypto = require('crypto');
 
 var chroot
 try{
@@ -43,6 +43,7 @@ module.exports = (Server, Client) => {
         .string("k")
         .string("chroot")
         .string("chuser")
+        .string("idheader")
         .alias('k', "authkey")
         .alias('p', "proxy")
         .alias('t', "tunnel")
@@ -60,13 +61,15 @@ module.exports = (Server, Client) => {
         .describe("H", "additional headers")
         .argv;
 
+    const uuid_header = argv.idheader ? argv.idheader.toString() : 'x-wstclient';
+
     if (argv.s) {
         let server;
         if (argv.t) {
             let [host, port] = argv.t.split(":")
-            server = new Server(argv.authkey, host, port)
+            server = new Server(argv.authkey, uuid_header, host, port)
         } else {
-            server = new Server(argv.authkey)
+            server = new Server(argv.authkey, uuid_header)
         }
         server.start(argv.s, (err) => {
             if (err) return;
@@ -91,8 +94,11 @@ module.exports = (Server, Client) => {
             };
         }
 
-        const uuid = require("machine-uuid");
-        uuid((machineId) => {
+        crypto.randomBytes(20, (err, buf) => {
+            if (err) throw err;
+
+            let machineId = buf.toString('hex');
+
             let conf = {};
             if (argv.proxy) {
                 conf = tryParse(argv.proxy);
@@ -119,9 +125,9 @@ module.exports = (Server, Client) => {
                         headers[parts[0].trim()] = parts[1].trim();
                 }
             }
-            headers['x-wstclient'] = machineId;
+            headers[uuid_header] = machineId;
 
-            let client = new Client(argv.authkey)
+            let client = new Client(argv.authkey, uuid_header)
             if (argv.http) {
                 client.setHttpOnly(true)
             }
@@ -173,7 +179,7 @@ module.exports = (Server, Client) => {
                     }
                 }
             });
-        })
+        });
     } else {
         return console.log(optimist.help());
     }
