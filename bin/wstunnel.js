@@ -44,6 +44,7 @@ module.exports = (Server, Client) => {
         .string("chroot")
         .string("chuser")
         .string("idheader")
+        .string("proto")
         .alias('k', "authkey")
         .alias('p', "proxy")
         .alias('t', "tunnel")
@@ -62,14 +63,15 @@ module.exports = (Server, Client) => {
         .argv;
 
     const uuid_header = argv.idheader ? argv.idheader.toString() : 'x-wstclient';
+    const protocol = argv.proto ? argv.proto.toString() : "tunnel-protocol"
 
     if (argv.s) {
         let server;
         if (argv.t) {
             let [host, port] = argv.t.split(":")
-            server = new Server(argv.authkey, uuid_header, host, port)
+            server = new Server(argv.authkey, uuid_header, protocol, host, port)
         } else {
-            server = new Server(argv.authkey, uuid_header)
+            server = new Server(argv.authkey, uuid_header, protocol)
         }
         server.start(argv.s, (err) => {
             if (err) return;
@@ -117,17 +119,17 @@ module.exports = (Server, Client) => {
                     for (let i = 0; i < argv.H.length; ++i) {
                         let parts = argv.H[i].split(':');
                         if (parts.length < 2) continue;
-                        headers[parts[0].trim()] = parts[1].trim();
+                        headers[parts[0].trim()] = parts.slice(1).join();
                     }
                 } else {
                     let parts = argv.H.split(':');
                     if (parts.length >= 2)
-                        headers[parts[0].trim()] = parts[1].trim();
+                        headers[parts[0].trim()] = parts.slice(1).join();
                 }
             }
             headers[uuid_header] = machineId;
 
-            let client = new Client(argv.authkey, uuid_header)
+            let client = new Client(argv.authkey, uuid_header, protocol)
             if (argv.http) {
                 client.setHttpOnly(true)
             }
@@ -147,7 +149,7 @@ module.exports = (Server, Client) => {
                 if (toks[0] === 'stdio') {
                     client.startStdio(wsHostUrl, remoteAddr, headers, (err) => {
                         if (err) {
-                            console.error(err.message)
+                            console.error("Can't establish WSTunnel, abort");
                             process.exit(1)
                         } else if (chroot !== null && process.getuid() === 0 && argv.chroot && argv.chuser) {
                             chroot(argv.chroot.toString(), argv.chuser.toString());
